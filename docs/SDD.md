@@ -507,7 +507,7 @@ requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, mat
 
 | 項目 | 內容 |
 |---|---|
-| 狀態 | 🔲 待開發 |
+| 狀態 | ✅ 完成 |
 | 目標 | 篩選無照相設備覆蓋的高風險熱點，依風險排序輸出設備設置建議清單 |
 | 對應需求 | FR-08（AC-08） |
 
