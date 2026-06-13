@@ -28,3 +28,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# 報告產出（Word 格式，由 gen_report.py 重新產生）
+report.docx
