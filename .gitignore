@@ -31,3 +31,9 @@ Thumbs.db
 
 # 報告產出（Word 格式，由 gen_report.py 重新產生）
 report.docx
+
+# 大部分圖表不入版控（由 s08_visualize.py 重新產生）
+figures/*
+# README 封面與展示圖例外（用 * 而非 / 才能讓 ! 覆蓋）
+!figures/F2.png
+!figures/F6.png
