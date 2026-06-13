@@ -344,3 +344,207 @@ python src/s08_visualize.py
 ```
 
 requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, matplotlib, seaborn, folium, pyarrow, astral`;選用:`tensorflow`。
+
+---
+
+## 9. 開發階段執行目標（Phase Execution Objectives）
+
+本章記錄各開發 Phase 的執行目標、對應需求、輸入/輸出與驗收條件，作為逐步開發的實作藍圖。
+
+### Phase 0 — 專案骨架
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | ✅ 完成 |
+| 目標 | 建立可重現、模組化的專案目錄結構與共用基礎設施 |
+| 對應需求 | NFR-1（可重現性）、NFR-3（可維護性）、NFR-6（編碼） |
+
+**執行項目**
+1. 建立目錄結構：`data/raw/`、`data/processed/`、`src/`、`outputs/logs/`、`figures/`
+2. 將原始資料移至 `data/raw/`（符合 SDD 2.3 規範）
+3. 建立 `requirements.txt`，鎖定所有套件版本（NFR-1）
+4. 建立 `src/config.py`，集中管理所有路徑、參數與常數（NFR-3），不寫死魔術數字
+5. 建立 `src/utils.py`，實作共用函式：`get_logger`（NFR-4）、`min_haversine`（向量化）、`timer`
+6. 安裝套件並驗證全數可匯入
+
+**輸出**：`config.py`、`utils.py`、`requirements.txt`、目錄骨架
+
+---
+
+### Phase 1 — 資料載入與清理（s01_clean.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | ✅ 完成 |
+| 目標 | 讀取五份事故斑點圖與照相設備表，清理異常資料並輸出標準格式 |
+| 對應需求 | FR-01（AC-01a、AC-01b） |
+
+**執行項目**
+1. 以 `cp950`（`encoding_errors='replace'`）讀取 IN-1~IN-5，縱向合併
+2. 統一欄名：`座標-X` → `longitude`、`座標-Y` → `latitude`（kepler.gl 相容格式）
+3. 清理三類異常（依序執行，每步記錄 log）：
+   - Step A：剔除座標欄位為 NaN 的紀錄
+   - Step B：剔除座標超出臺北市合法範圍（經度 121.4–121.7、緯度 24.9–25.25）
+   - Step C：剔除發生時間無法解析為 datetime 的紀錄
+4. 輸出被剔除紀錄至 `outputs/anomalies.csv`，標明異常原因（AC-01b）
+5. 以 `Big5` 讀取 IN-6，衍生 `is_speed` 布林欄位
+
+**輸出**：`accidents.parquet`（118,980 筆）、`cameras.parquet`（143 筆）、`anomalies.csv`（3 筆）
+
+**驗收**：AC-01a 清理後 118,980 筆 ✅、AC-01b 異常 log 完整 ✅
+
+---
+
+### Phase 2 — 空間熱點辨識（s02_hotspot.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | ✅ 完成 |
+| 目標 | 以 DBSCAN 辨識事故空間熱點，計算熱點統計摘要與設備距離 |
+| 對應需求 | FR-02（AC-02a、AC-02b） |
+
+**執行項目**
+1. 對事故座標執行 DBSCAN（metric=haversine、eps=50m、min_samples=80、algorithm=ball_tree）
+   - 注意：haversine 輸入需為 `[latitude, longitude]` 弧度順序
+2. 將 cluster 標籤（-1~144）寫回 `accidents.parquet`（噪音點保留，AC-02b）
+3. 對 cluster≥0 的熱點計算：件數、A1 數、中心座標（平均）、代表地點（眾數）、逐年件數
+4. 呼叫 `utils.min_haversine` 向量化計算各熱點至最近設備的距離（`dist_any`、`dist_speed`）
+5. 輸出 `hotspots.csv`，`cluster_type` 欄位留空（由 Phase 5 回填）
+
+**輸出**：更新後的 `accidents.parquet`（+cluster 欄）、`hotspots.csv`（145 筆，14 欄）
+
+**驗收**：145 個熱點 ✅、熱點內占比 19.2% ✅、Top1 中正區 539 件 dist_any=915m ✅
+
+---
+
+### Phase 3 — 時間序列化（s03_series.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | ✅ 完成 |
+| 目標 | 建立三份時間序列產物，作為特徵萃取與預測建模的基礎 |
+| 對應需求 | FR-03（AC-03） |
+
+**執行項目**
+1. **全市日序列**：全部事故（含噪音）依日期 resample，reindex 補 0，涵蓋 2021-01-01 ~ 2025-12-31（1,826 天）
+2. **熱點月 panel**：cluster≥0 事故 pivot（index=cluster、columns=YYYY-MM），補 0，shape=(145, 60)
+3. **時間指紋向量**：各熱點的 24hr+7weekday+12month 計數，逐列正規化為比例，shape=(145, 43)
+
+**輸出**：`daily_series.csv`（1,826 筆）、`hotspot_monthly.csv`（145×61）、`dist_vectors.csv`（145×44）
+
+**驗收**：日序列 1,826 筆無缺日 ✅、panel 無缺月 ✅、向量列加總全為 1.0 ✅
+
+---
+
+### Phase 4 — 特徵萃取（s04_features.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | 🔲 待開發 |
+| 目標 | 從日序列建立機器學習特徵矩陣，所有特徵嚴格防止未來資訊洩漏 |
+| 對應需求 | FR-04（AC-04）、第二階段 FR-10（AC-10） |
+
+**執行項目**
+1. 讀取 `daily_series.csv`，以 shift 建立防洩漏 lag 特徵：lag_1、lag_7、lag_14、lag_28
+2. 以 `shift(1).rolling(w)` 建立移動統計：ma_7、ma_28、std_7、std_28
+3. 建立週期特徵：weekday（one-hot 7 維）、month（整數）
+4. dropna（暖機期 28 天截斷），訓練/驗證切分在截斷後執行
+5. 輸出特徵定義表至 `outputs/`
+6. 〔第二階段〕以 `--phase2` 旗標啟用：合併 IN-7~IN-9 外部資料（雨量、假日、捷運運量、COVID dummy）
+
+**輸出**：`feature_matrix.csv`（1,798 筆 × 特徵欄）、`outputs/feature_definitions.csv`
+
+**驗收**：AC-04 特徵矩陣無 NaN、無未來資訊洩漏（T-4）
+
+---
+
+### Phase 5 — PCA 降維與 K-means 熱點型態分群（s05_pca_kmeans.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | 🔲 待開發 |
+| 目標 | 對熱點時間指紋向量降維並分群，找出熱點型態供建議設備類型對映 |
+| 對應需求 | FR-05（AC-05）、FR-06（AC-06） |
+
+**執行項目**
+1. 讀取 `dist_vectors.csv`（145×43），StandardScaler 標準化
+2. PCA（n_components=10），輸出累積解釋變異曲線，取 2–3 維主成分
+3. K-means（k=2~8，random_state=42，n_init=10），以 elbow + silhouette 選最佳 k
+4. 輸出各群平均 24hr 曲線，人工命名型態（通勤尖峰型、夜間型、全日型、假日型）
+5. 將 cluster_type 回填至 `hotspots.csv`
+
+**輸出**：`pca_coords.csv`、`explained_variance.csv`、`loadings.csv`、`hotspot_clusters.csv`、`cluster_profiles.csv`
+
+**驗收**：AC-05 累積解釋變異曲線輸出 ✅、AC-06 每個熱點皆有群標籤 ✅
+
+---
+
+### Phase 6 — 預測建模與 80/20 驗證（s06_forecast.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | 🔲 待開發 |
+| 目標 | 建立多模型時間序列預測，嚴格時序切分驗證，輸出 MAE/RMSE 指標 |
+| 對應需求 | FR-07（AC-07a、AC-07b、AC-07c） |
+
+**執行項目**
+1. 讀取 `feature_matrix.csv`，嚴格切分：訓練 2021-01~2024-12、驗證 2025-01~2025-12
+2. 訓練四個模型：
+   - Naive（lag-7）：ŷ(t) = y(t-7)，作為下限 baseline
+   - SARIMA（s=7）：以訓練期 AIC 網格搜尋選階（p,q≤2）
+   - XGBoost：n_estimators=500，early_stopping（訓練期尾端 10% 內部驗證）
+   - LSTM（選用）：輸入窗 28 天，MinMaxScaler 僅以訓練期 fit
+3. 訓練全域熱點月 XGBoost（過去 12 個月 + 靜態特徵）
+4. 輸出各模型驗證期 MAE、RMSE 與相對 Naive 改善率
+
+**輸出**：`outputs/metrics.csv`、`outputs/pred.csv`
+
+**驗收**：AC-07a 各模型指標輸出 ✅、AC-07b XGBoost 優於 Naive ✅、AC-07c 無資訊洩漏 ✅
+
+---
+
+### Phase 7 — 覆蓋缺口分析與建議清單（s07_recommend.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | 🔲 待開發 |
+| 目標 | 篩選無照相設備覆蓋的高風險熱點，依風險排序輸出設備設置建議清單 |
+| 對應需求 | FR-08（AC-08） |
+
+**執行項目**
+1. 篩選 `dist_any > 300m` 的熱點為「覆蓋缺口（Gap）」
+2. 依五年事故數（第一階段）或預測風險（第二階段）排序，取前 TOP_N（預設 10）
+3. 依熱點型態（cluster_type）對映建議設備類型：
+   - 夜間型 → 測速照相
+   - 通勤尖峰型 → 闖紅燈照相 / 科技執法
+   - 全日型 → 綜合評估（A1 加權）
+   - 假日型 → 行人安全導向科技執法
+4. 輸出含排名、座標（kepler.gl 相容）、事故數、A1、趨勢、建議類型的完整清單
+
+**輸出**：`outputs/recommendations.csv`（前 10 名）
+
+**驗收**：AC-08 第 1 名中正區羅斯福路4段，539 件，最近設備 915m ✅
+
+---
+
+### Phase 8 — 視覺化（s08_visualize.py）
+
+| 項目 | 內容 |
+|---|---|
+| 狀態 | 🔲 待開發 |
+| 目標 | 產出報告所需全部圖表（F1–F9），PNG ≥ 150 dpi |
+| 對應需求 | FR-09（AC-09） |
+
+**執行項目**
+1. F1：密度 + 熱點圖（matplotlib hexbin / folium HeatMap）
+2. F2：熱點 vs 設備疊圖（folium 互動地圖，缺口前 10 高亮，輸出 HTML）
+3. F3：A1/A2 比例長條圖
+4. F4：全市日序列折線圖（COVID 警戒期間灰底 axvspan 標注）
+5. F5：PCA 散佈圖 + 各群 24hr 平均曲線子圖
+6. F6：驗證期預測 vs 實際折線疊圖（各模型一條，含指標文字框）
+7. 〔第二階段〕F7：雨日 vs 非雨日箱型圖、F8：假日 vs 平日箱型圖、F9：特徵加入前後指標對照
+8. 設定中文字型（Microsoft JhengHei），避免豆腐字
+
+**輸出**：`figures/F1.png` ~ `figures/F9.png`（PNG ≥ 150 dpi）、`figures/F2.html`
+
+**驗收**：AC-09 圖檔輸出至 figures/，含標題與軸標籤 ✅
