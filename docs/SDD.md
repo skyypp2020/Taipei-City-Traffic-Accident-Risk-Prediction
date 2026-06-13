@@ -440,7 +440,7 @@ requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, mat
 
 | 項目 | 內容 |
 |---|---|
-| 狀態 | 🔲 待開發 |
+| 狀態 | ✅ 完成 |
 | 目標 | 從日序列建立機器學習特徵矩陣，所有特徵嚴格防止未來資訊洩漏 |
 | 對應需求 | FR-04（AC-04）、第二階段 FR-10（AC-10） |
 
