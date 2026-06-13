@@ -483,7 +483,7 @@ requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, mat
 
 | 項目 | 內容 |
 |---|---|
-| 狀態 | 🔲 待開發 |
+| 狀態 | ✅ 完成 |
 | 目標 | 建立多模型時間序列預測，嚴格時序切分驗證，輸出 MAE/RMSE 指標 |
 | 對應需求 | FR-07（AC-07a、AC-07b、AC-07c） |
 
