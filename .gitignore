@@ -1,0 +1,30 @@
+# 虛擬環境
+venv/
+.venv/
+env/
+
+# 原始資料（大型 CSV，不入版控）
+data/raw/
+
+# 中間產物（可由程式重現）
+data/processed/
+outputs/
+figures/
+
+# Python 快取
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# 系統檔
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
