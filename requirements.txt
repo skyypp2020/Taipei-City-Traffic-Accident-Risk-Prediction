@@ -10,4 +10,4 @@ pyarrow==16.1.0
 astral==3.2
 contextily==1.7.0
 pyproj==3.7.1
-python-docx
+python-docx==1.2.0
