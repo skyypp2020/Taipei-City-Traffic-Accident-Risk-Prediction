@@ -531,7 +531,7 @@ requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, mat
 
 | 項目 | 內容 |
 |---|---|
-| 狀態 | 🔲 待開發 |
+| 狀態 | ✅ 完成 |
 | 目標 | 產出報告所需全部圖表（F1–F9），PNG ≥ 150 dpi |
 | 對應需求 | FR-09（AC-09） |
 
