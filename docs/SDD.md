@@ -462,7 +462,7 @@ requirements.txt(核心):`pandas, numpy, scikit-learn, statsmodels, xgboost, mat
 
 | 項目 | 內容 |
 |---|---|
-| 狀態 | 🔲 待開發 |
+| 狀態 | ✅ 完成 |
 | 目標 | 對熱點時間指紋向量降維並分群，找出熱點型態供建議設備類型對映 |
 | 對應需求 | FR-05（AC-05）、FR-06（AC-06） |
 
